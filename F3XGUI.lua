@@ -1,381 +1,329 @@
 
-local Players = game:GetService("Players")
-local TweenService = game:GetService("TweenService")
-local UIS = game:GetService("UserInputService")
+--==================================================
+-- F3XGUI HUB
+-- ScriptBlox 中文脚本中心
+-- Author: sevgranddad
+--==================================================
 
-local Player = Players.LocalPlayer
-local PlayerGui = Player:WaitForChild("PlayerGui")
-local Config = {
-    Name = "F3x HUB",
-    Version = "1.0.0",
+local HttpService = game:GetService("HttpService")
+
+--==============================
+-- 1. 加载 WindUI
+--==============================
+
+local WindUI = loadstring(game:HttpGet(
+    "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
+))()
+
+--==============================
+-- 2. 创建主窗口
+--==============================
+
+local Window = WindUI:CreateWindow({
+    Title = "F3XGUI HUB",
+    Icon = "code",
     Author = "sevgranddad",
+    Folder = "F3XGUI",
+    Size = UDim2.fromOffset(650, 480)
+})
 
-    Background = Color3.fromRGB(13, 13, 21),
-    Sidebar = Color3.fromRGB(18, 18, 29),
-    Card = Color3.fromRGB(25, 24, 39),
+--==============================
+-- 3. 创建脚本中心
+--==============================
 
-    Purple = Color3.fromRGB(153, 95, 255),
-    PurpleLight = Color3.fromRGB(190, 145, 255),
+local ScriptTab = Window:Tab({
+    Title = "脚本中心",
+    Icon = "search"
+})
 
-    White = Color3.fromRGB(245, 243, 255),
-    Gray = Color3.fromRGB(130, 128, 151),
-    Border = Color3.fromRGB(48, 43, 68),
-}
+local SearchSection = ScriptTab:Section({
+    Title = "ScriptBlox 中文搜索"
+})
 
-local function Create(class, props, parent)
-    local obj = Instance.new(class)
+local ResultSection = ScriptTab:Section({
+    Title = "搜索结果"
+})
 
-    for k, v in pairs(props or {}) do
-        obj[k] = v
+--==============================
+-- 4. 基础设置
+--==============================
+
+local API = "https://scriptblox.com/api/script/search"
+local SearchKeyword = "f3x"
+local SearchPage = 1
+
+local function Notify(title, content)
+    WindUI:Notify({
+        Title = title,
+        Content = content,
+        Duration = 3
+    })
+end
+
+local function SafeText(value, fallback)
+    if value == nil or tostring(value) == "" then
+        return fallback or "未知"
     end
 
-    obj.Parent = parent
-    return obj
+    return tostring(value)
 end
 
-local function Corner(parent, radius)
-    return Create("UICorner", {
-        CornerRadius = UDim.new(0, radius)
-    }, parent)
+--==============================
+-- 5. 获取脚本信息
+--==============================
+
+local function GetScriptInfo(data)
+    local owner = data.owner
+    local gameData = data.game
+
+    return {
+        Name = SafeText(data.title, "未命名脚本"),
+
+        Author = type(owner) == "table"
+            and SafeText(owner.username, "未知作者")
+            or "未知作者",
+
+        Game = type(gameData) == "table"
+            and SafeText(gameData.name, "通用")
+            or "通用",
+
+        Views = SafeText(data.views, "0"),
+
+        Image = data.image
+            or data.thumbnail
+            or data.gameThumbnail,
+
+        Source = data.script,
+
+        Verified = data.verified == true,
+        Patched = data.isPatched == true
+    }
 end
 
-local function Stroke(parent, color, transparency)
-    return Create("UIStroke", {
-        Color = color or Config.Border,
-        Transparency = transparency or 0,
-        Thickness = 1
-    }, parent)
+--==============================
+-- 6. 源码查看器
+--==============================
+
+local function ViewSource(info)
+
+    if type(info.Source) ~= "string"
+        or info.Source == "" then
+
+        Notify("源码不可用", "没有获取到源码")
+        return
+    end
+
+    local SourceWindow = WindUI:CreateWindow({
+        Title = "F3XGUI HUB - 源码查看器",
+        Icon = "code",
+        Author = "sevgranddad",
+        Size = UDim2.fromOffset(700, 480)
+    })
+
+    local SourceTab = SourceWindow:Tab({
+        Title = "脚本源码",
+        Icon = "file-code"
+    })
+
+    SourceTab:Code({
+        Title = info.Name,
+        Code = info.Source
+    })
+
+    SourceTab:Button({
+        Title = "复制源码",
+        Icon = "copy",
+
+        Callback = function()
+            if setclipboard then
+                setclipboard(info.Source)
+                Notify("复制成功", "源码已复制")
+            else
+                Notify("复制失败", "当前环境不支持复制")
+            end
+        end
+    })
 end
 
-local function Gradient(parent, c1, c2, rotation)
-    return Create("UIGradient", {
-        Color = ColorSequence.new(c1, c2),
-        Rotation = rotation or 0
-    }, parent)
+--==============================
+-- 7. 双重确认系统
+--==============================
+
+local function FirstConfirm(info)
+
+    WindUI:Dialog({
+        Title = "脚本详情",
+        Content =
+            "脚本名称：" .. info.Name
+            .. "\n作者：" .. info.Author
+            .. "\n适用游戏：" .. info.Game
+            .. "\n浏览次数：" .. info.Views
+            .. "\n\n是否继续？",
+
+        Buttons = {
+            {
+                Title = "继续",
+
+                Callback = function()
+
+                    WindUI:Dialog({
+                        Title = "第三方脚本安全提醒",
+
+                        Content =
+                            "该脚本来自 ScriptBlox。"
+                            .. "\n第三方代码可能存在风险。"
+                            .. "\n请先查看和检查源码。",
+
+                        Buttons = {
+                            {
+                                Title = "查看源码",
+
+                                Callback = function()
+                                    ViewSource(info)
+                                end
+                            },
+
+                            {
+                                Title = "取消",
+
+                                Callback = function()
+                                    Notify(
+                                        "已取消",
+                                        "没有执行任何第三方代码"
+                                    )
+                                end
+                            }
+                        }
+                    })
+                end
+            },
+
+            {
+                Title = "取消",
+
+                Callback = function()
+                    Notify("已取消", "返回脚本列表")
+                end
+            }
+        }
+    })
 end
 
-local function Tween(obj, time, properties)
-    local t = TweenService:Create(
-        obj,
-        TweenInfo.new(time, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
-        properties
+--==============================
+-- 8. 搜索功能
+--==============================
+
+local function SearchScripts()
+
+    if SearchKeyword == "" then
+        Notify("搜索提示", "请输入关键词")
+        return
+    end
+
+    Notify("正在搜索", "正在连接 ScriptBlox...")
+
+    local url = API
+        .. "?q=" .. HttpService:UrlEncode(SearchKeyword)
+        .. "&page=" .. tostring(SearchPage)
+
+    local success, response = pcall(function()
+        return game:HttpGet(url, true)
+    end)
+
+    if not success then
+        Notify("搜索失败", "无法连接 ScriptBlox")
+        return
+    end
+
+    local decodeSuccess, decoded = pcall(function()
+        return HttpService:JSONDecode(response)
+    end)
+
+    if not decodeSuccess or type(decoded) ~= "table" then
+        Notify("搜索失败", "服务器数据解析失败")
+        return
+    end
+
+    local scripts = decoded.result
+        and decoded.result.scripts
+
+    if type(scripts) ~= "table" or #scripts == 0 then
+        Notify("没有结果", "没有找到相关脚本")
+        return
+    end
+
+    -- 显示搜索结果
+    for _, data in ipairs(scripts) do
+
+        local info = GetScriptInfo(data)
+
+        ResultSection:Paragraph({
+            Title = "📜 " .. info.Name,
+
+            Desc =
+                "作者：" .. info.Author
+                .. "\n游戏：" .. info.Game
+                .. "\n浏览次数：" .. info.Views
+                .. "\n验证状态："
+                .. (info.Verified and "已验证" or "未验证")
+                .. "\n状态："
+                .. (info.Patched and "可能已失效" or "未标记失效")
+        })
+
+        ResultSection:Button({
+            Title = "查看源码 / 安全确认",
+            Icon = "shield-check",
+
+            Callback = function()
+                FirstConfirm(info)
+            end
+        })
+    end
+
+    Notify(
+        "搜索完成",
+        "已获取 " .. tostring(#scripts) .. " 条结果"
     )
-    t:Play()
-    return t
 end
 
---========================================
--- SCREEN
---========================================
+--==============================
+-- 9. 搜索输入框
+--==============================
 
-local Screen = Create("ScreenGui", {
-    Name = "GUI Dashboard",
-    ResetOnSpawn = false,
-    ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-}, PlayerGui)
+SearchSection:Input({
+    Title = "搜索关键词",
+    Placeholder = "例如：F3X",
 
---========================================
--- MAIN WINDOW
---========================================
+    Callback = function(value)
+        SearchKeyword = value
+    end
+})
 
-local Main = Create("Frame", {
-    Name = "Main",
-    Size = UDim2.fromOffset(780, 490),
-    Position = UDim2.new(0.5, -390, 0.5, -245),
-    BackgroundColor3 = Config.Background,
-    BorderSizePixel = 0,
-    ClipsDescendants = true
-}, Screen)
+SearchSection:Button({
+    Title = "搜索脚本",
+    Icon = "search",
 
-Corner(Main, 15)
-Stroke(Main, Config.Border, 0.15)
+    Callback = function()
+        SearchPage = 1
+        SearchScripts()
+    end
+})
 
---========================================
--- TOP BAR
---========================================
+SearchSection:Button({
+    Title = "下一页",
+    Icon = "chevron-right",
 
-local Top = Create("Frame", {
-    Size = UDim2.new(1, 0, 0, 52),
-    BackgroundColor3 = Color3.fromRGB(21, 20, 33),
-    BorderSizePixel = 0
-}, Main)
+    Callback = function()
+        SearchPage = SearchPage + 1
+        SearchScripts()
+    end
+})
 
-Corner(Top, 15)
+--==============================
+-- 10. 启动提示
+--==============================
 
-local TopCover = Create("Frame", {
-    Position = UDim2.new(0, 0, 1, -15),
-    Size = UDim2.new(1, 0, 0, 15),
-    BackgroundColor3 = Color3.fromRGB(21, 20, 33),
-    BorderSizePixel = 0
-}, Top)
-
-local Logo = Create("Frame", {
-    Position = UDim2.fromOffset(17, 10),
-    Size = UDim2.fromOffset(32, 32),
-    BackgroundColor3 = Config.Purple,
-    BorderSizePixel = 0
-}, Top)
-
-Corner(Logo, 9)
-Gradient(Logo, Config.PurpleLight, Config.Purple, 45)
-
-Create("TextLabel", {
-    Size = UDim2.fromScale(1, 1),
-    BackgroundTransparency = 1,
-    Text = "P",
-    TextColor3 = Color3.new(1, 1, 1),
-    Font = Enum.Font.GothamBold,
-    TextSize = 19
-}, Logo)
-
-Create("TextLabel", {
-    Position = UDim2.fromOffset(58, 0),
-    Size = UDim2.fromOffset(170, 52),
-    BackgroundTransparency = 1,
-    Text = Config.Name,
-    TextColor3 = Config.White,
-    Font = Enum.Font.GothamBold,
-    TextSize = 15,
-    TextXAlignment = Enum.TextXAlignment.Left
-}, Top)
-
--- Status
-
-local Status = Create("Frame", {
-    Position = UDim2.new(1, -190, 0.5, -12),
-    Size = UDim2.fromOffset(105, 25),
-    BackgroundColor3 = Color3.fromRGB(32, 30, 46),
-    BorderSizePixel = 0
-}, Top)
-
-Corner(Status, 7)
-
-Create("Frame", {
-    Position = UDim2.fromOffset(10, 9),
-    Size = UDim2.fromOffset(7, 7),
-    BackgroundColor3 = Color3.fromRGB(100, 230, 150),
-    BorderSizePixel = 0
-}, Status)
-
-Create("TextLabel", {
-    Position = UDim2.fromOffset(24, 0),
-    Size = UDim2.new(1, -25, 1, 0),
-    BackgroundTransparency = 1,
-    Text = "UI LOADED",
-    TextColor3 = Config.Gray,
-    Font = Enum.Font.GothamBold,
-    TextSize = 9,
-    TextXAlignment = Enum.TextXAlignment.Left
-}, Status)
-
--- Window buttons
-
-local Minimize = Create("TextButton", {
-    Position = UDim2.new(1, -75, 0.5, -14),
-    Size = UDim2.fromOffset(28, 28),
-    BackgroundColor3 = Color3.fromRGB(39, 36, 55),
-    Text = "—",
-    TextColor3 = Config.White,
-    TextSize = 14,
-    Font = Enum.Font.GothamBold,
-    AutoButtonColor = false
-}, Top)
-
-Corner(Minimize, 7)
-
-local Close = Create("TextButton", {
-    Position = UDim2.new(1, -39, 0.5, -14),
-    Size = UDim2.fromOffset(28, 28),
-    BackgroundColor3 = Color3.fromRGB(130, 52, 76),
-    Text = "×",
-    TextColor3 = Config.White,
-    TextSize = 19,
-    Font = Enum.Font.GothamBold,
-    AutoButtonColor = false
-}, Top)
-
-Corner(Close, 7)
-
---========================================
--- SIDEBAR
---========================================
-
-local Sidebar = Create("Frame", {
-    Position = UDim2.fromOffset(0, 52),
-    Size = UDim2.new(0, 190, 1, -52),
-    BackgroundColor3 = Config.Sidebar,
-    BorderSizePixel = 0
-}, Main)
-
-Create("TextLabel", {
-    Position = UDim2.fromOffset(20, 22),
-    Size = UDim2.new(1, -35, 0, 20),
-    BackgroundTransparency = 1,
-    Text = "MAIN MENU",
-    TextColor3 = Config.Gray,
-    TextSize = 10,
-    Font = Enum.Font.GothamBold,
-    TextXAlignment = Enum.TextXAlignment.Left
-}, Sidebar)
-
-local Nav = Create("Frame", {
-    Position = UDim2.fromOffset(12, 55),
-    Size = UDim2.new(1, -24, 0, 220),
-    BackgroundTransparency = 1
-}, Sidebar)
-
-Create("UIListLayout", {
-    Padding = UDim.new(0, 8),
-    SortOrder = Enum.SortOrder.LayoutOrder
-}, Nav)
-
--- Sidebar footer
-
-local Footer = Create("Frame", {
-    Position = UDim2.new(0, 12, 1, -65),
-    Size = UDim2.new(1, -24, 0, 48),
-    BackgroundColor3 = Config.Card,
-    BorderSizePixel = 0
-}, Sidebar)
-
-Corner(Footer, 9)
-
-Create("TextLabel", {
-    Position = UDim2.fromOffset(12, 5),
-    Size = UDim2.new(1, -20, 0, 17),
-    BackgroundTransparency = 1,
-    Text = "DEVELOPER",
-    TextColor3 = Config.Gray,
-    Font = Enum.Font.GothamBold,
-    TextSize = 9,
-    TextXAlignment = Enum.TextXAlignment.Left
-}, Footer)
-
-Create("TextLabel", {
-    Position = UDim2.fromOffset(12, 22),
-    Size = UDim2.new(1, -20, 0, 17),
-    BackgroundTransparency = 1,
-    Text = Config.Author,
-    TextColor3 = Config.White,
-    Font = Enum.Font.GothamMedium,
-    TextSize = 11,
-    TextXAlignment = Enum.TextXAlignment.Left
-}, Footer)
-
---========================================
--- CONTENT
---========================================
-
-local Content = Create("Frame", {
-    Position = UDim2.fromOffset(190, 52),
-    Size = UDim2.new(1, -190, 1, -52),
-    BackgroundTransparency = 1
-}, Main)
-
-local Header = Create("Frame", {
-    Position = UDim2.fromOffset(25, 20),
-    Size = UDim2.new(1, -50, 0, 65),
-    BackgroundTransparency = 1
-}, Content)
-
-local PageTitle = Create("TextLabel", {
-    Size = UDim2.new(1, 0, 0, 34),
-    BackgroundTransparency = 1,
-    Text = "Dashboard",
-    TextColor3 = Config.White,
-    Font = Enum.Font.GothamBold,
-    TextSize = 23,
-    TextXAlignment = Enum.TextXAlignment.Left
-}, Header)
-
-local PageSubtitle = Create("TextLabel", {
-    Position = UDim2.fromOffset(1, 36),
-    Size = UDim2.new(1, 0, 0, 22),
-    BackgroundTransparency = 1,
-    Text = "Welcome back to your workspace.",
-    TextColor3 = Config.Gray,
-    Font = Enum.Font.Gotham,
-    TextSize = 11,
-    TextXAlignment = Enum.TextXAlignment.Left
-}, Header)
-
---========================================
--- HERO CARD
---========================================
-
-local Hero = Create("Frame", {
-    Position = UDim2.fromOffset(25, 105),
-    Size = UDim2.new(1, -50, 0, 135),
-    BackgroundColor3 = Color3.fromRGB(85, 53, 150),
-    BorderSizePixel = 0,
-    ClipsDescendants = true
-}, Content)
-
-Corner(Hero, 13)
-Gradient(Hero,
-    Color3.fromRGB(111, 69, 205),
-    Color3.fromRGB(46, 36, 88),
-    15
+Notify(
+    "F3XGUI HUB",
+    "中文脚本中心已加载"
 )
-
-Create("Frame", {
-    Position = UDim2.new(1, -115, 0, -70),
-    Size = UDim2.fromOffset(190, 190),
-    BackgroundColor3 = Config.PurpleLight,
-    BackgroundTransparency = 0.88,
-    BorderSizePixel = 0
-}, Hero)
-
-local HeroText = Create("TextLabel", {
-    Position = UDim2.fromOffset(22, 23),
-    Size = UDim2.new(1, -40, 0, 35),
-    BackgroundTransparency = 1,
-    Text = "Welcome to " .. Config.Name,
-    TextColor3 = Color3.new(1, 1, 1),
-    TextSize = 20,
-    Font = Enum.Font.GothamBold,
-    TextXAlignment = Enum.TextXAlignment.Left
-}, Hero)
-
-Create("TextLabel", {
-    Position = UDim2.fromOffset(23, 62),
-    Size = UDim2.new(1, -50, 0, 35),
-    BackgroundTransparency = 1,
-    Text = "Your workspace is ready. Start building something amazing.",
-    TextColor3 = Color3.fromRGB(220, 208, 255),
-    TextSize = 10,
-    Font = Enum.Font.Gotham,
-    TextXAlignment = Enum.TextXAlignment.Left
-}, Hero)
-
-Create("TextLabel", {
-    Position = UDim2.fromOffset(23, 101),
-    Size = UDim2.fromOffset(100, 20),
-    BackgroundTransparency = 1,
-    Text = "VERSION " .. Config.Version,
-    TextColor3 = Color3.fromRGB(225, 211, 255),
-    TextSize = 9,
-    Font = Enum.Font.GothamBold,
-    TextXAlignment = Enum.TextXAlignment.Left
-}, Hero)
-
---========================================
--- EMPTY WORKSPACE
---========================================
-
-local Workspace = Create("Frame", {
-    Position = UDim2.fromOffset(25, 257),
-    Size = UDim2.new(1, -50, 1, -282),
-    BackgroundColor3 = Config.Card,
-    BorderSizePixel = 0
-}, Content)
-
-Corner(Workspace, 12)
-Stroke(Workspace, Config.Border, 0.3)
-
-local EmptyIcon = Create("Frame", {
-    AnchorPoint = Vector2.new(0.5, 0.5),
-    Position = UDim2.new(0.5, 0, 0.5, -30),
-    Size = UDim2.fromOffset(48, 48),
-    BackgroundColor3 = Color3.fromRGB(57, 43, 91),
-    BorderSizePix
